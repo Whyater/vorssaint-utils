@@ -7,7 +7,7 @@ import Foundation
 /// The cards the AI page can show, in the order a person arranges them. Raw
 /// values are stored in the saved order, so cases are never renamed.
 enum NotchAgentCard: String, CaseIterable, Identifiable {
-    case limits, spend, live, trend, models, projects, activity, resets
+    case limits, spend, live, agentTree, trend, models, projects, activity, resets
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum NotchAgentCard: String, CaseIterable, Identifiable {
         case .limits: return "gauge.with.dots.needle.33percent"
         case .spend: return "dollarsign.circle"
         case .live: return "waveform.path.ecg"
+        case .agentTree: return "arrow.triangle.branch"
         case .trend: return "chart.bar.xaxis"
         case .models: return "cpu"
         case .projects: return "folder"
@@ -24,8 +25,8 @@ enum NotchAgentCard: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Charts need the island's width; everything else pairs up.
-    var fullWidth: Bool { self == .trend || self == .activity }
+    /// Charts and the agent tree need the island's width; everything else pairs up.
+    var fullWidth: Bool { self == .trend || self == .activity || self == .agentTree }
 }
 
 /// What the closed island shows beside the camera while an agent works.
@@ -231,15 +232,20 @@ enum NotchAgentSupport {
     static let spacing: CGFloat = 10
     static let cardHeight: CGFloat = 96
     static let chartHeight: CGFloat = 118
+    /// Room for five agents of a tree and a line for the rest.
+    static let treeHeight: CGFloat = 142
+    static let treeRows = 5
     /// Below this width every card takes a row of its own.
     static let pairWidth: CGFloat = 390
 
-    static func tiles(cards: [NotchAgentCard], providers: [AgentProvider]) -> [NotchAgentTile] {
+    static func tiles(cards: [NotchAgentCard], providers: [AgentProvider], agentTree: Bool = false) -> [NotchAgentTile] {
         cards.flatMap { card -> [NotchAgentTile] in
             switch card {
             case .limits: return providers.filter(\.reportsLimits).map { NotchAgentTile(card: .limits, provider: $0) }
             // Banked resets belong to a Codex account.
             case .resets: return providers.contains(.codex) ? [NotchAgentTile(card: .resets, provider: .codex)] : []
+            // The tree comes from Agent Tree, and only while it keeps a recent one.
+            case .agentTree: return agentTree ? [NotchAgentTile(card: .agentTree, provider: nil)] : []
             default: return [NotchAgentTile(card: card, provider: nil)]
             }
         }
@@ -268,7 +274,8 @@ enum NotchAgentSupport {
     }
 
     static func height(of row: [NotchAgentTile]) -> CGFloat {
-        row.contains { $0.card.fullWidth } ? chartHeight : cardHeight
+        if row.contains(where: { $0.card == .agentTree }) { return treeHeight }
+        return row.contains { $0.card.fullWidth } ? chartHeight : cardHeight
     }
 
     static func contentHeight(_ rows: [[NotchAgentTile]]) -> CGFloat {

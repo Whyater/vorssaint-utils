@@ -826,7 +826,8 @@ final class NotchService: ObservableObject {
         let providers = NotchAgentSupport.providers().filter(usage.seen.contains)
         guard !providers.isEmpty else { return 0 }
         return NotchAgentSupport.contentHeight(NotchAgentSupport.rows(
-            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers), width: width))
+            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers,
+                                    agentTree: AgentUsageService.shared.agentTree != nil), width: width))
     }
     var expandedGeometry: NotchGeometry {
         var result = geometry
@@ -3808,6 +3809,16 @@ final class NotchService: ObservableObject {
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in
                     self?.syncMenuSpaceMonitoring()
+                    self?.objectWillChange.send()
+                    self?.refreshPresentation()
+                }.store(in: &subscriptions)
+            // Agent Tree's card comes and goes with its snapshot.
+            AgentUsageService.shared.$agentTree
+                .map { $0 != nil }
+                .removeDuplicates()
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
                     self?.objectWillChange.send()
                     self?.refreshPresentation()
                 }.store(in: &subscriptions)
