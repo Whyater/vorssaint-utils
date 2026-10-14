@@ -12,6 +12,7 @@ enum AgentTreeLiveTests {
         truncation(suite)
         branches(suite)
         cards(suite)
+        application(suite)
     }
 
     private static func node(_ id: String, parent: String? = nil, depth: Int, running: Bool = false) -> String {
@@ -164,5 +165,19 @@ enum AgentTreeLiveTests {
                      "a single agent is not counted as agents")
         suite.expect(NotchAgentCard.allCases.firstIndex(of: .agentTree) == NotchAgentCard.allCases.firstIndex(of: .live).map { $0 + 1 },
                      "by default the tree follows the card about work in progress")
+    }
+
+    private static func application(_ suite: TestSuite) {
+        let app = URL(fileURLWithPath: "/Applications/Agent Tree.app")
+        var asked: [String] = []
+        let found = AgentTreeLive.application(locate: { asked.append($0); return app },
+                                              identify: { _ in AgentTreeLive.bundleIdentifier })
+        suite.expect(found == app && asked == [AgentTreeLive.bundleIdentifier],
+                     "an installed Agent Tree is found by its bundle identifier, asked once")
+        suite.expect(AgentTreeLive.application(locate: { _ in nil }, identify: { _ in AgentTreeLive.bundleIdentifier }) == nil,
+                     "without Agent Tree on this Mac the card has nothing to open")
+        suite.expect(AgentTreeLive.application(locate: { _ in app }, identify: { _ in "com.example.other" }) == nil
+                        && AgentTreeLive.application(locate: { _ in app }, identify: { _ in nil }) == nil,
+                     "a bundle that no longer answers to Agent Tree's identifier is not opened")
     }
 }

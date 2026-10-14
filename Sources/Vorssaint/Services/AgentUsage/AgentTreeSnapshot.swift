@@ -169,6 +169,16 @@ enum AgentTreeLive {
         home.appending(path: ".agent-tree/live.json", directoryHint: .notDirectory)
     }
 
+    /// Agent Tree's app when it is on this Mac, so its card offers to open it
+    /// only when a click would. Launch Services can still name a bundle that
+    /// has since been replaced, so the bundle there must answer to the
+    /// identifier too. The card asks once when it appears, not every redraw.
+    static func application(locate: (String) -> URL? = InstalledApps.url(for:),
+                             identify: (URL) -> String? = { Bundle(url: $0)?.bundleIdentifier }) -> URL? {
+        guard let url = locate(bundleIdentifier), identify(url) == bundleIdentifier else { return nil }
+        return url
+    }
+
     /// The file's snapshot; nil for a missing, oversized or unknown file.
     static func load(from url: URL) -> AgentTreeSnapshot? {
         guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maximumSize,

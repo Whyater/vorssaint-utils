@@ -541,11 +541,17 @@ private struct NotchAgentLiveCard: View {
 // MARK: Agent Tree
 
 /// The agents of one thread as Agent Tree saw them, each under the one that
-/// started it: the working ones first when they do not all fit.
+/// started it: the working ones first when they do not all fit. With Agent
+/// Tree on this Mac a click anywhere on the card opens it; without, the card
+/// only informs and offers nothing to click.
 private struct NotchAgentTreeCard: View {
     let tree: AgentTreeSnapshot.Tree
     let text: NotchAgentStrings
+    /// Agent Tree's app, looked up when the card appears rather than on each redraw.
+    @State private var app: URL?
+    @State private var hovered = false
     @Environment(\.locale) private var locale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let indent: CGFloat = 11
     private static let rowHeight = NotchAgentSupport.treeRowHeight
@@ -569,6 +575,13 @@ private struct NotchAgentTreeCard: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         if tree.live { NotchAgentPulse(tint: tint(working?.family ?? tree.nodes[0].family), size: 5) }
+                        if app != nil {
+                            // The same glyph as the island's other "open the app" controls.
+                            Image(systemName: "arrow.up.forward.app")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white.opacity(hovered ? 0.85 : 0.4))
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
                 VStack(alignment: .leading, spacing: 0) {
@@ -585,14 +598,27 @@ private struct NotchAgentTreeCard: View {
                 }
             }
         }
+        // A light wash under the pointer, as on the calendar's event cards.
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.white.opacity(app != nil && hovered ? 0.05 : 0))
+                .allowsHitTesting(false)
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovered)
         .contentShape(Rectangle())
-        .onTapGesture(perform: openAgentTree)
+        .onHover { hovered = $0 }
+        // Without the app the card's own tap is switched off, not just ignored.
+        .gesture(TapGesture().onEnded(openAgentTree), including: app != nil ? .all : .subviews)
+        .help(app != nil ? text.agentTreeOpen : "")
         .accessibilityElement(children: .contain)
         .accessibilityLabel(text.agentTreeCard)
         .accessibilityValue(caption)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(text.agentTreeOpen)
-        .accessibilityAction(named: text.agentTreeOpen, openAgentTree)
+        .accessibilityAddTraits(app != nil ? .isButton : [])
+        .accessibilityHint(app != nil ? text.agentTreeOpen : "")
+        .accessibilityActions {
+            if app != nil { Button(text.agentTreeOpen, action: openAgentTree) }
+        }
+        .onAppear { app = AgentTreeLive.application() }
     }
 
     private var caption: String {
@@ -669,10 +695,13 @@ private struct NotchAgentTreeCard: View {
         }
     }
 
-    /// Agent Tree when it is on this Mac; nothing happens otherwise.
+    /// Brings Agent Tree to the front. The app is looked up again, as it may
+    /// have gone since the card appeared; the island then closes or stays as
+    /// it does whenever another app comes forward.
     private func openAgentTree() {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: AgentTreeLive.bundleIdentifier) else { return }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        app = AgentTreeLive.application()
+        guard let app else { return }
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
     }
 }
 
