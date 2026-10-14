@@ -185,11 +185,12 @@ enum AgentTreeLive {
 
     /// The tree worth a card: from a recent snapshot, with at least one node.
     /// Past `liveFreshness` nothing in it is shown as working any more, so a
-    /// tree left behind when Agent Tree quits reads as the last thread.
+    /// tree left behind when Agent Tree quits reads as the last thread. A file
+    /// dated ahead of the clock (the clock was set back) can't vouch for work either.
     static func current(_ snapshot: AgentTreeSnapshot?, now: Date) -> AgentTreeSnapshot.Tree? {
-        let age = snapshot.map { abs(now.timeIntervalSince($0.generatedAt)) } ?? .infinity
-        guard let snapshot, age < freshness, let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
-        return age < liveFreshness ? tree : tree.settled
+        let age = snapshot.map { now.timeIntervalSince($0.generatedAt) } ?? .infinity
+        guard let snapshot, abs(age) < freshness, let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
+        return (-60..<liveFreshness).contains(age) ? tree : tree.settled
     }
 
     /// Up to `limit` nodes in their own order, and how many were left out.

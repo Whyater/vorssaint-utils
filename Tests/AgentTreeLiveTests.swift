@@ -82,8 +82,11 @@ enum AgentTreeLiveTests {
         let stale = AgentTreeLive.current(working, now: generated.addingTimeInterval(600 + AgentTreeLive.liveFreshness))
         suite.expect(stale?.live == false && stale?.nodes.contains(where: \.running) == false,
                      "a snapshot too old to vouch for work shows its tree as finished")
-        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(-7200)) != nil,
-                     "a clock a little behind the file still shows the card")
+        let ahead = AgentTreeLive.current(working, now: generated.addingTimeInterval(-7200))
+        suite.expect(ahead != nil && ahead?.live == false && ahead?.nodes.contains(where: \.running) == false,
+                     "a file dated ahead of the clock still shows its tree, but nothing as working")
+        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(-30))?.live == true,
+                     "a few seconds of clock difference still counts as fresh")
     }
 
     private static func truncation(_ suite: TestSuite) {
