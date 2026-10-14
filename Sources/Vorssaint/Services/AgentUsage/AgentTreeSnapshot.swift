@@ -196,8 +196,23 @@ enum AgentTreeLive {
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         var status = stat()
         guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
-              let data = try? handle.read(upToCount: maximumSize + 1) else { return nil }
+              let data = readAll(upTo: maximumSize + 1, read: { count in
+                  // FileHandle answers nil at the end of the file and throws on a failed read.
+                  do { return try handle.read(upToCount: count) ?? Data() } catch { return nil }
+              }) else { return nil }
         return decode(data)
+    }
+
+    /// Reads until the end or `limit` bytes, as one read may return less than
+    /// asked. Nil when a read fails.
+    static func readAll(upTo limit: Int, read: (Int) -> Data?) -> Data? {
+        var data = Data()
+        while data.count < limit {
+            guard let chunk = read(limit - data.count) else { return nil }
+            if chunk.isEmpty { break }
+            data.append(chunk)
+        }
+        return data
     }
 
     static func decode(_ data: Data) -> AgentTreeSnapshot? {

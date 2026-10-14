@@ -13,6 +13,7 @@ enum AgentTreeLiveTests {
         branches(suite)
         cards(suite)
         application(suite)
+        boundedRead(suite)
     }
 
     private static func node(_ id: String, parent: String? = nil, depth: Int, running: Bool = false) -> String {
@@ -212,5 +213,23 @@ enum AgentTreeLiveTests {
         suite.expect(AgentTreeLive.application(locate: { _ in app }, identify: { _ in "com.example.other" }) == nil
                         && AgentTreeLive.application(locate: { _ in app }, identify: { _ in nil }) == nil,
                      "a bundle that no longer answers to Agent Tree's identifier is not opened")
+    }
+
+    private static func boundedRead(_ suite: TestSuite) {
+        let file = Data("0123456789".utf8)
+        func reader(chunk: Int) -> (Int) -> Data? {
+            var offset = 0
+            return { count in
+                let end = min(file.count, offset + min(count, chunk))
+                defer { offset = end }
+                return file.subdata(in: offset..<end)
+            }
+        }
+        suite.expect(AgentTreeLive.readAll(upTo: 100, read: reader(chunk: 3)) == file,
+                     "a file that arrives in short reads is read to its end")
+        suite.expect(AgentTreeLive.readAll(upTo: 4, read: reader(chunk: 3)) == file.prefix(4),
+                     "reading stops at the limit")
+        suite.expect(AgentTreeLive.readAll(upTo: 100, read: { _ in nil }) == nil,
+                     "a failed read gives nothing")
     }
 }
