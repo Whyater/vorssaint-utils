@@ -51,7 +51,7 @@ struct NotchAgentsView: View {
                 let rows = rows
                 TimelineView(.periodic(from: .now, by: 15)) { context in
                     Group {
-                        if NotchAgentSupport.contentHeight(rows) > size.height + 0.5 {
+                        if NotchAgentSupport.contentHeight(rows, tree: usage.agentTree) > size.height + 0.5 {
                             ScrollView { grid(rows, now: context.date) }
                                 .scrollIndicators(.automatic)
                         } else {
@@ -74,7 +74,7 @@ struct NotchAgentsView: View {
                 HStack(spacing: NotchAgentSupport.spacing) {
                     ForEach(row) { tile in card(tile, now: now) }
                 }
-                .frame(height: NotchAgentSupport.height(of: row))
+                .frame(height: NotchAgentSupport.height(of: row, tree: usage.agentTree))
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -548,17 +548,18 @@ private struct NotchAgentTreeCard: View {
     @Environment(\.locale) private var locale
 
     private static let indent: CGFloat = 11
-    private static let rowHeight: CGFloat = 16
+    private static let rowHeight = NotchAgentSupport.treeRowHeight
     /// Deeper nodes line up with the deepest drawn, so a label keeps its room.
     private static let deepest = 6
 
     var body: some View {
-        let shown = AgentTreeLive.rows(tree.nodes, limit: NotchAgentSupport.treeRows)
-        let depths = shown.rows.map { min($0.depth, Self.deepest) }
-        let branches = AgentTreeLive.branches(depths)
+        let shown = NotchAgentSupport.treeShown(tree)
+        let levels = AgentTreeLive.levels(shown.rows, in: tree.nodes)
+        let depths = levels.map { min($0.depth, Self.deepest) }
+        let branches = AgentTreeLive.branches(depths, gaps: levels.map(\.gap))
         let working = tree.nodes.first(where: \.running)
         NotchAgentCardChrome {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: NotchAgentSupport.treeSpacing) {
                 NotchAgentCardHeader(title: text.agentTreeCard, symbol: NotchAgentCard.agentTree.symbol,
                                      tint: tree.live ? tint(working?.family ?? tree.nodes[0].family) : .secondary) {
                     HStack(spacing: 4) {
@@ -575,13 +576,12 @@ private struct NotchAgentTreeCard: View {
                         row(node, depth: depths[index], branch: branches[index])
                     }
                 }
-                // Agent Tree lists a few dozen nodes of a bigger tree; the count covers them all.
-                let hidden = max(tree.nodeCount, tree.nodes.count) - shown.rows.count
-                if hidden > 0 {
-                    Text(text.agentTreeMore(hidden.formatted(.number.locale(locale))))
+                if shown.hidden > 0 {
+                    Text(text.agentTreeMore(shown.hidden.formatted(.number.locale(locale))))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
+                        .frame(height: NotchAgentSupport.treeLineHeight)
                 }
             }
         }
@@ -596,8 +596,10 @@ private struct NotchAgentTreeCard: View {
     }
 
     private var caption: String {
-        let summary = text.agentTreeSummary(agents: tree.nodeCount.formatted(.number.locale(locale)),
-                                            depth: tree.maxDepth.formatted(.number.locale(locale)))
+        // One agent has no depth to speak of.
+        let summary = tree.nodeCount == 1 ? text.agentTreeSummaryOne
+            : text.agentTreeSummary(agents: tree.nodeCount.formatted(.number.locale(locale)),
+                                    depth: tree.maxDepth.formatted(.number.locale(locale)))
         return tree.live ? summary : text.agentTreeLastThread + " · " + summary
     }
 
@@ -689,10 +691,21 @@ private struct NotchAgentTreeBranch: View {
                 path.move(to: CGPoint(x: x(column), y: 0))
                 path.addLine(to: CGPoint(x: x(column), y: size.height))
             }
+            var skipped = Path()
             if depth > 0 {
                 let column = depth - 1
-                path.move(to: CGPoint(x: x(column), y: 0))
-                path.addLine(to: CGPoint(x: x(column), y: branch.more ? size.height : middle))
+                // Levels left out above this node show as a dotted stretch of its line.
+                if branch.gap {
+                    skipped.move(to: CGPoint(x: x(column), y: 0))
+                    skipped.addLine(to: CGPoint(x: x(column), y: middle - 2))
+                    if branch.more {
+                        path.move(to: CGPoint(x: x(column), y: middle))
+                        path.addLine(to: CGPoint(x: x(column), y: size.height))
+                    }
+                } else {
+                    path.move(to: CGPoint(x: x(column), y: 0))
+                    path.addLine(to: CGPoint(x: x(column), y: branch.more ? size.height : middle))
+                }
                 path.move(to: CGPoint(x: x(column), y: middle))
                 path.addLine(to: CGPoint(x: x(depth) - 4, y: middle))
             }
@@ -701,6 +714,8 @@ private struct NotchAgentTreeBranch: View {
                 path.addLine(to: CGPoint(x: x(depth), y: size.height))
             }
             context.stroke(path, with: .color(.white.opacity(0.18)), lineWidth: 1)
+            context.stroke(skipped, with: .color(.white.opacity(0.32)),
+                           style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [0.1, 2.5]))
         }
     }
 }

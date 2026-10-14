@@ -100,8 +100,21 @@ enum AgentTreeLiveTests {
         suite.expect(AgentTreeLive.rows(nodes, limit: 6).rows.map(\.id) == ["root", "a", "b", "b1", "b1x", "c"],
                      "a node fills in only under one already shown, never hanging from a hidden parent")
         let tight = AgentTreeLive.rows(nodes, limit: 2)
-        suite.expect(tight.rows.map(\.id) == ["root", "b"] && tight.hidden == 6,
-                     "a branch longer than the room keeps its top")
+        suite.expect(tight.rows.map(\.id) == ["root", "b1x"] && tight.hidden == 6,
+                     "a branch longer than the room keeps its top and the working node")
+        suite.expect(AgentTreeLive.rows(nodes, limit: 1).rows.map(\.id) == ["b1x"],
+                     "with room for one row the working node is the one shown")
+        // root > L1 > ... > L6, with only the deepest at work.
+        let chain = (0...6).map { Node(id: "L\($0)", parentID: $0 == 0 ? nil : "L\($0 - 1)", depth: $0, running: $0 == 6) }
+        let deep = AgentTreeLive.rows(chain, limit: 5)
+        suite.expect(deep.rows.map(\.id) == ["L0", "L3", "L4", "L5", "L6"] && deep.hidden == 2,
+                     "a working node deeper than the room shows under its root, with the levels between left out")
+        let levels = AgentTreeLive.levels(deep.rows, in: chain)
+        suite.expect(levels.map(\.depth) == [0, 1, 2, 3, 4] && levels.map(\.gap) == [false, true, false, false, false],
+                     "rows past left-out levels sit one under the nearest shown, marked as a gap")
+        let whole = AgentTreeLive.levels(Array(nodes.prefix(4)), in: nodes)
+        suite.expect(whole.map(\.depth) == [0, 1, 2, 2] && !whole.contains(where: \.gap),
+                     "a tree shown without gaps keeps its own depths")
         let finished = nodes.map { Node(id: $0.id, parentID: $0.parentID, depth: $0.depth) }
         suite.expect(AgentTreeLive.rows(finished, limit: 4).rows.map(\.id) == ["root", "a", "a1", "a2"],
                      "once all have finished the tree is shown from the top")
@@ -118,6 +131,9 @@ enum AgentTreeLiveTests {
                         && lines[4] == .init(through: [], more: false, children: true)
                         && lines[5] == .init(through: [false], more: false, children: false),
                      "each row joins its parent and carries on the lines of later siblings")
+        let gapped = AgentTreeLive.branches([0, 1, 2], gaps: [false, true, false])
+        suite.expect(gapped[1] == .init(through: [], more: false, children: true, gap: true) && !gapped[2].gap,
+                     "a row past left-out levels draws its joining line as a gap")
     }
 
     private static func cards(_ suite: TestSuite) {
@@ -130,9 +146,19 @@ enum AgentTreeLiveTests {
         suite.expect(NotchAgentSupport.tiles(cards: [.agentTree, .spend], providers: [], agentTree: true) == [tree]
                         && NotchAgentSupport.tiles(cards: [.agentTree, .spend], providers: []).isEmpty,
                      "with no agent logs the tree card still shows, and nothing else does")
+        typealias Node = AgentTreeSnapshot.Node
+        let one = AgentTreeSnapshot.Tree(nodes: [Node(id: "root")])
+        let big = AgentTreeSnapshot.Tree(nodeCount: 40, nodes: (0..<8).map { Node(id: "n\($0)", parentID: $0 == 0 ? nil : "n0", depth: $0 == 0 ? 0 : 1) })
+        let row = NotchAgentSupport.treeRowHeight
         suite.expect(NotchAgentSupport.rows([spend, tree], width: 424) == [[spend], [tree]]
-                        && NotchAgentSupport.contentHeight([[tree]]) == NotchAgentSupport.treeHeight,
+                        && NotchAgentSupport.contentHeight([[tree]], tree: big) == NotchAgentSupport.treeHeight(big),
                      "the tree takes the whole row and its own height")
+        suite.expect(NotchAgentSupport.treeHeight(big) - NotchAgentSupport.treeHeight(one)
+                        == row * CGFloat(NotchAgentSupport.treeRows - 1) + NotchAgentSupport.treeSpacing + NotchAgentSupport.treeLineHeight
+                        && NotchAgentSupport.treeHeight(big) == 142 && NotchAgentSupport.treeShown(big).hidden == 35,
+                     "a tree card is as tall as its rows, with a line only when agents are left out")
+        suite.expect(FeatureStrings.notchAgents(.enUS).agentTreeSummaryOne == "1 agent",
+                     "a single agent is not counted as agents")
         suite.expect(NotchAgentCard.allCases.firstIndex(of: .agentTree) == NotchAgentCard.allCases.firstIndex(of: .live).map { $0 + 1 },
                      "by default the tree follows the card about work in progress")
     }

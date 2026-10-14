@@ -195,7 +195,9 @@ enum AgentTreeLive {
     /// Up to `limit` nodes in their own order, and how many were left out.
     /// Working nodes come first, with every node above them so the branch
     /// still reads; the rest fill in under nodes already shown, from the
-    /// latest while some work and from the top once all have finished.
+    /// latest while some work and from the top once all have finished. A
+    /// branch longer than the room keeps its top and the levels just above
+    /// the working node, so the work itself is never the part left out.
     static func rows(_ nodes: [AgentTreeSnapshot.Node], limit: Int) -> (rows: [AgentTreeSnapshot.Node], hidden: Int) {
         guard nodes.count > limit else { return (nodes, 0) }
         guard limit > 0 else { return ([], nodes.count) }
@@ -210,7 +212,15 @@ enum AgentTreeLive {
                 branch.append(above)
                 parent = nodes[above].parentID
             }
-            for position in branch.reversed() where kept.count < limit && chosen.insert(position).inserted {
+            var missing = branch.reversed().filter { !chosen.contains($0) }
+            let room = limit - kept.count
+            if missing.count > room {
+                // The top only when it is new and leaves room for the working node.
+                let top = room > 1 && missing.first == branch.last ? [missing[0]] : []
+                missing = top + missing.suffix(room - top.count)
+            }
+            for position in missing {
+                chosen.insert(position)
                 kept.append(position)
             }
         }
@@ -232,6 +242,26 @@ enum AgentTreeLive {
         return (kept.sorted().map { nodes[$0] }, nodes.count - kept.count)
     }
 
+    /// Where each row shown sits: one level under the nearest node above it
+    /// that is shown, and whether levels between the two were left out. A
+    /// node with nothing above it shown keeps its own depth.
+    static func levels(_ rows: [AgentTreeSnapshot.Node], in nodes: [AgentTreeSnapshot.Node]) -> [(depth: Int, gap: Bool)] {
+        let parents = Dictionary(nodes.map { ($0.id, $0.parentID) }, uniquingKeysWith: { first, _ in first })
+        var placed: [String: Int] = [:]
+        return rows.map { node in
+            var parent = node.parentID
+            var steps = 0
+            var seen: Set<String> = [node.id]
+            while let id = parent, placed[id] == nil, seen.insert(id).inserted, let above = parents[id] {
+                parent = above
+                steps += 1
+            }
+            let level = parent.flatMap { placed[$0] }.map { (depth: $0 + 1, gap: steps > 0) } ?? (depth: node.depth, gap: false)
+            placed[node.id] = level.depth
+            return level
+        }
+    }
+
     /// The lines a row draws to join its node to the rest, from the depths
     /// of the rows shown: a column for each level above the node.
     struct Branch: Equatable {
@@ -241,9 +271,11 @@ enum AgentTreeLive {
         var more: Bool
         /// The next row hangs from this one.
         var children: Bool
+        /// Levels between this node and the one it hangs from are left out.
+        var gap = false
     }
 
-    static func branches(_ depths: [Int]) -> [Branch] {
+    static func branches(_ depths: [Int], gaps: [Bool] = []) -> [Branch] {
         depths.indices.map { row in
             let depth = depths[row]
             // A column's line goes on while a later row returns to its level
@@ -253,7 +285,8 @@ enum AgentTreeLive {
             }
             return Branch(through: (0..<max(0, depth - 1)).map { continues($0 + 1) },
                           more: depth > 0 && continues(depth),
-                          children: row + 1 < depths.count && depths[row + 1] > depth)
+                          children: row + 1 < depths.count && depths[row + 1] > depth,
+                          gap: depth > 0 && gaps.indices.contains(row) && gaps[row])
         }
     }
 

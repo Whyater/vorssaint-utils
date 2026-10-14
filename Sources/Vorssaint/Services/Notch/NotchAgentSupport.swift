@@ -232,9 +232,14 @@ enum NotchAgentSupport {
     static let spacing: CGFloat = 10
     static let cardHeight: CGFloat = 96
     static let chartHeight: CGFloat = 118
-    /// Room for five agents of a tree and a line for the rest.
-    static let treeHeight: CGFloat = 142
+    /// A tree card shows up to five agents and a line for the rest, and is
+    /// only as tall as what it shows.
     static let treeRows = 5
+    static let treeRowHeight: CGFloat = 16
+    static let treeLineHeight: CGFloat = 13
+    static let treeSpacing: CGFloat = 6
+    /// The card's padding above and below, and its header.
+    private static let treeChrome: CGFloat = 10 * 2 + 17
     /// Below this width every card takes a row of its own.
     static let pairWidth: CGFloat = 390
 
@@ -275,14 +280,28 @@ enum NotchAgentSupport {
         return rows
     }
 
-    static func height(of row: [NotchAgentTile]) -> CGFloat {
-        if row.contains(where: { $0.card == .agentTree }) { return treeHeight }
+    /// The rows a tree card shows, and how many agents it counts but leaves out.
+    static func treeShown(_ tree: AgentTreeSnapshot.Tree) -> (rows: [AgentTreeSnapshot.Node], hidden: Int) {
+        let shown = AgentTreeLive.rows(tree.nodes, limit: treeRows)
+        // Agent Tree lists a few dozen nodes of a bigger tree; the count covers them all.
+        return (shown.rows, max(tree.nodeCount, tree.nodes.count) - shown.rows.count)
+    }
+
+    static func treeHeight(_ tree: AgentTreeSnapshot.Tree?) -> CGFloat {
+        guard let tree else { return treeChrome }
+        let shown = treeShown(tree)
+        let rows = CGFloat(shown.rows.count) * treeRowHeight
+        return treeChrome + (rows > 0 ? treeSpacing + rows : 0) + (shown.hidden > 0 ? treeSpacing + treeLineHeight : 0)
+    }
+
+    static func height(of row: [NotchAgentTile], tree: AgentTreeSnapshot.Tree? = nil) -> CGFloat {
+        if row.contains(where: { $0.card == .agentTree }) { return treeHeight(tree) }
         return row.contains { $0.card.fullWidth } ? chartHeight : cardHeight
     }
 
-    static func contentHeight(_ rows: [[NotchAgentTile]]) -> CGFloat {
+    static func contentHeight(_ rows: [[NotchAgentTile]], tree: AgentTreeSnapshot.Tree? = nil) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
-        return rows.map(height).reduce(0, +) + spacing * CGFloat(rows.count - 1)
+        return rows.map { height(of: $0, tree: tree) }.reduce(0, +) + spacing * CGFloat(rows.count - 1)
     }
 }
 
