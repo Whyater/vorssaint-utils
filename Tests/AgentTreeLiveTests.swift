@@ -63,6 +63,36 @@ enum AgentTreeLiveTests {
         suite.expect(AgentTreeLive.load(from: url)?.tree?.nodes.count == 1
                         && url.path.hasSuffix("/.agent-tree/live.json"),
                      "the snapshot is read from Agent Tree's folder")
+        var grown = file(nodes: [node("root", depth: 0)])
+        grown.append(Data(repeating: 0x20, count: AgentTreeLive.maximumSize))
+        try? grown.write(to: url)
+        suite.expect(AgentTreeLive.load(from: url) == nil, "a file over the size limit is not read")
+        let elsewhere = directory.appending(path: "elsewhere.json", directoryHint: .notDirectory)
+        try? file(nodes: [node("root", depth: 0)]).write(to: elsewhere)
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.createSymbolicLink(at: url, withDestinationURL: elsewhere)
+        suite.expect(AgentTreeLive.decode((try? Data(contentsOf: url)) ?? Data()) != nil
+                        && AgentTreeLive.load(from: url) == nil,
+                     "a symbolic link in place of the file is not followed")
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        suite.expect(AgentTreeLive.load(from: url) == nil, "a folder in place of the file reads as no snapshot")
+
+        let repeated = AgentTreeLive.decode(file(nodes: [node("root", depth: 0), node("", parent: "root", depth: 1),
+                                                         node("a", parent: "root", depth: 1), node("a", parent: "a", depth: 2),
+                                                         node("root", parent: "a", depth: 2), node("b", parent: "a", depth: 2)]))
+        suite.expect(repeated?.tree?.nodes.map(\.id) == ["root", "a", "b"]
+                        && repeated?.tree?.nodes[1].parentID == "root",
+                     "a node without an id, or repeating an earlier one, is left out and the first one kept")
+        typealias Node = AgentTreeSnapshot.Node
+        let looped = AgentTreeSnapshot.Tree(nodes: [Node(id: "x", parentID: "y", depth: 1), Node(id: "y", parentID: "x", depth: 1),
+                                                    Node(id: "z", parentID: "z", depth: 1, running: true), Node(id: "", depth: 0),
+                                                    Node(id: "x", depth: 0)])
+        let loopedRows = AgentTreeLive.rows(looped.nodes, limit: 2)
+        suite.expect(looped.nodes.map(\.id) == ["x", "y", "z"]
+                        && loopedRows.rows.map(\.id) == ["z"] && loopedRows.hidden == 2
+                        && AgentTreeLive.levels(looped.nodes, in: looped.nodes).count == 3,
+                     "nodes that name each other or themselves as parent still lay out")
     }
 
     private static func freshness(_ suite: TestSuite) {
@@ -78,16 +108,19 @@ enum AgentTreeLiveTests {
                      "a snapshot without agents shows no card")
         let live = AgentTreeSnapshot.Tree(live: true, nodes: [AgentTreeSnapshot.Node(id: "root", running: true)])
         let working = AgentTreeSnapshot(generatedAt: generated, tree: live)
-        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(60)) == live,
-                     "a fresh snapshot keeps its working agents")
+        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(60)) == live
+                        && AgentTreeLive.current(working, now: generated) == live
+                        && AgentTreeLive.current(working, now: generated.addingTimeInterval(-1)) == live,
+                     "a fresh snapshot, even one just written, keeps its working agents")
         let stale = AgentTreeLive.current(working, now: generated.addingTimeInterval(600 + AgentTreeLive.liveFreshness))
         suite.expect(stale?.live == false && stale?.nodes.contains(where: \.running) == false,
                      "a snapshot too old to vouch for work shows its tree as finished")
         let ahead = AgentTreeLive.current(working, now: generated.addingTimeInterval(-7200))
         suite.expect(ahead != nil && ahead?.live == false && ahead?.nodes.contains(where: \.running) == false,
                      "a file dated ahead of the clock still shows its tree, but nothing as working")
-        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(-30))?.live == true,
-                     "a few seconds of clock difference still counts as fresh")
+        let soon = AgentTreeLive.current(working, now: generated.addingTimeInterval(-30))
+        suite.expect(soon != nil && soon?.live == false && soon?.nodes.contains(where: \.running) == false,
+                     "a file written on this Mac but dated seconds ahead shows nothing as working")
     }
 
     private static func truncation(_ suite: TestSuite) {

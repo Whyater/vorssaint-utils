@@ -563,18 +563,18 @@ private struct NotchAgentTreeCard: View {
         let levels = AgentTreeLive.levels(shown.rows, in: tree.nodes)
         let depths = levels.map { min($0.depth, Self.deepest) }
         let branches = AgentTreeLive.branches(depths, gaps: levels.map(\.gap))
-        let working = tree.nodes.first(where: \.running)
+        let family = (tree.nodes.first(where: \.running) ?? tree.nodes.first)?.family ?? ""
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: NotchAgentSupport.treeSpacing) {
                 NotchAgentCardHeader(title: text.agentTreeCard, symbol: NotchAgentCard.agentTree.symbol,
-                                     tint: tree.live ? tint(working?.family ?? tree.nodes[0].family) : .secondary) {
+                                     tint: tree.live ? tint(family) : .secondary) {
                     HStack(spacing: 4) {
                         Text(caption)
                             .font(.system(size: 9.5, weight: .medium))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        if tree.live { NotchAgentPulse(tint: tint(working?.family ?? tree.nodes[0].family), size: 5) }
+                        if tree.live { NotchAgentPulse(tint: tint(family), size: 5) }
                         if app != nil {
                             // The same glyph as the island's other "open the app" controls.
                             Image(systemName: "arrow.up.forward.app")

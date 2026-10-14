@@ -72,6 +72,8 @@ struct AgentTreeSnapshot: Decodable, Equatable {
         let tokens: Int
         let cost: Double?
         /// Depth first, as Agent Tree lists them, and at most a few dozen.
+        /// Each has an id of its own: one without an id, or repeating one
+        /// listed earlier, is left out.
         let nodes: [Node]
 
         enum CodingKeys: String, CodingKey {
@@ -86,6 +88,9 @@ struct AgentTreeSnapshot: Decodable, Equatable {
             self.threadID = threadID
             self.title = title
             self.live = live
+            var seen = Set<String>()
+            let nodes = Array(nodes.filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
+                .prefix(AgentTreeLive.maximumNodes))
             self.nodes = nodes
             self.nodeCount = max(nodeCount ?? 0, nodes.count)
             self.maxDepth = max(maxDepth ?? 0, nodes.map(\.depth).max() ?? 0)
@@ -96,8 +101,7 @@ struct AgentTreeSnapshot: Decodable, Equatable {
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             // One node this reader cannot read leaves the others in place.
-            let nodes = ((try? values.decodeIfPresent([Lossy<Node>].self, forKey: .nodes)) ?? [])
-                .compactMap(\.value).prefix(AgentTreeLive.maximumNodes)
+            let nodes = ((try? values.decodeIfPresent([Lossy<Node>].self, forKey: .nodes)) ?? []).compactMap(\.value)
             self.init(threadID: (try? values.decodeIfPresent(String.self, forKey: .threadID)) ?? "",
                       title: (try? values.decodeIfPresent(String.self, forKey: .title)) ?? "",
                       live: (try? values.decodeIfPresent(Bool.self, forKey: .live)) ?? false,
@@ -106,7 +110,7 @@ struct AgentTreeSnapshot: Decodable, Equatable {
                                     AgentTreeLive.count((try? values.decodeIfPresent(Double.self, forKey: .maxDepth)))),
                       tokens: AgentTreeLive.count((try? values.decodeIfPresent(Double.self, forKey: .tokens))),
                       cost: AgentTreeLive.money((try? values.decodeIfPresent(Double.self, forKey: .cost))),
-                      nodes: Array(nodes))
+                      nodes: nodes)
         }
 
         /// The same tree with nothing working, for a snapshot too old to vouch for that.
@@ -161,6 +165,9 @@ enum AgentTreeLive {
     static let freshness: TimeInterval = 86_400
     /// Agent Tree rewrites the file at least every ten minutes while it runs.
     static let liveFreshness: TimeInterval = 900
+    /// Agent Tree writes the file on this Mac, so a date further ahead than
+    /// rounding allows means the clock was set back since.
+    static let clockSlack: TimeInterval = 2
     static let maximumSize = 1 << 20
     static let maximumNodes = 200
     static let deepest = 32
@@ -179,10 +186,17 @@ enum AgentTreeLive {
         return url
     }
 
-    /// The file's snapshot; nil for a missing, oversized or unknown file.
+    /// The file's snapshot; nil for a missing, oversized or unknown file, or
+    /// anything other than a regular file, such as a symbolic link. The open
+    /// itself refuses a link, so one swapped in after a check is refused too,
+    /// and a file still growing is read only up to the limit.
     static func load(from url: URL) -> AgentTreeSnapshot? {
-        guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maximumSize,
-              let data = try? Data(contentsOf: url) else { return nil }
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var status = stat()
+        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
+              let data = try? handle.read(upToCount: maximumSize + 1) else { return nil }
         return decode(data)
     }
 
@@ -196,11 +210,12 @@ enum AgentTreeLive {
     /// The tree worth a card: from a recent snapshot, with at least one node.
     /// Past `liveFreshness` nothing in it is shown as working any more, so a
     /// tree left behind when Agent Tree quits reads as the last thread. A file
-    /// dated ahead of the clock (the clock was set back) can't vouch for work either.
+    /// dated more than `clockSlack` ahead of the clock (the clock was set
+    /// back) can't vouch for work either.
     static func current(_ snapshot: AgentTreeSnapshot?, now: Date) -> AgentTreeSnapshot.Tree? {
         let age = snapshot.map { now.timeIntervalSince($0.generatedAt) } ?? .infinity
         guard let snapshot, abs(age) < freshness, let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
-        return (-60..<liveFreshness).contains(age) ? tree : tree.settled
+        return (-clockSlack..<liveFreshness).contains(age) ? tree : tree.settled
     }
 
     /// Up to `limit` nodes in their own order, and how many were left out.
