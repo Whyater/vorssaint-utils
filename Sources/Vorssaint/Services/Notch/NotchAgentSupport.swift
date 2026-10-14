@@ -239,7 +239,9 @@ enum NotchAgentSupport {
     static let pairWidth: CGFloat = 390
 
     static func tiles(cards: [NotchAgentCard], providers: [AgentProvider], agentTree: Bool = false) -> [NotchAgentTile] {
-        cards.flatMap { card -> [NotchAgentTile] in
+        // With no agent logs on this Mac, Agent Tree's card is the only one with anything to show.
+        let cards = providers.isEmpty ? cards.filter { $0 == .agentTree } : cards
+        return cards.flatMap { card -> [NotchAgentTile] in
             switch card {
             case .limits: return providers.filter(\.reportsLimits).map { NotchAgentTile(card: .limits, provider: $0) }
             // Banked resets belong to a Codex account.

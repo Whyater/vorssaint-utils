@@ -175,7 +175,7 @@ enum AgentTreeLive {
 
     /// The tree worth a card: from a recent snapshot, with at least one node.
     static func current(_ snapshot: AgentTreeSnapshot?, now: Date) -> AgentTreeSnapshot.Tree? {
-        guard let snapshot, now.timeIntervalSince(snapshot.generatedAt) < freshness,
+        guard let snapshot, abs(now.timeIntervalSince(snapshot.generatedAt)) < freshness,
               let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
         return tree
     }

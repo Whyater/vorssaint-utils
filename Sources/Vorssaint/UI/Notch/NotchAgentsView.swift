@@ -43,7 +43,7 @@ struct NotchAgentsView: View {
                     Text(text.loading).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if providers.isEmpty {
+            } else if providers.isEmpty && usage.agentTree == nil {
                 NotchEmptyView(symbol: "sparkles", message: text.empty)
             } else if rows.isEmpty {
                 NotchEmptyView(symbol: "square.grid.2x2", message: text.noCards)

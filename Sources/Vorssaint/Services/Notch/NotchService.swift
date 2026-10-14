@@ -824,7 +824,6 @@ final class NotchService: ObservableObject {
         let usage = AgentUsageService.shared.snapshot
         guard usage.loaded else { return nil }
         let providers = NotchAgentSupport.providers().filter(usage.seen.contains)
-        guard !providers.isEmpty else { return 0 }
         return NotchAgentSupport.contentHeight(NotchAgentSupport.rows(
             NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers,
                                     agentTree: AgentUsageService.shared.agentTree != nil), width: width))

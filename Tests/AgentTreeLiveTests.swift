@@ -118,6 +118,9 @@ enum AgentTreeLiveTests {
                         && NotchAgentSupport.tiles(cards: [.agentTree, .spend], providers: [.claude], agentTree: true)
                         == [tree, spend],
                      "the tree card shows only while Agent Tree keeps a recent snapshot")
+        suite.expect(NotchAgentSupport.tiles(cards: [.agentTree, .spend], providers: [], agentTree: true) == [tree]
+                        && NotchAgentSupport.tiles(cards: [.agentTree, .spend], providers: []).isEmpty,
+                     "with no agent logs the tree card still shows, and nothing else does")
         suite.expect(NotchAgentSupport.rows([spend, tree], width: 424) == [[spend], [tree]]
                         && NotchAgentSupport.contentHeight([[tree]]) == NotchAgentSupport.treeHeight,
                      "the tree takes the whole row and its own height")
