@@ -75,6 +75,15 @@ enum AgentTreeLiveTests {
                         && AgentTreeLive.current(AgentTreeSnapshot(generatedAt: generated, tree: .init(nodes: [])),
                                                  now: generated) == nil,
                      "a snapshot without agents shows no card")
+        let live = AgentTreeSnapshot.Tree(live: true, nodes: [AgentTreeSnapshot.Node(id: "root", running: true)])
+        let working = AgentTreeSnapshot(generatedAt: generated, tree: live)
+        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(60)) == live,
+                     "a fresh snapshot keeps its working agents")
+        let stale = AgentTreeLive.current(working, now: generated.addingTimeInterval(600 + AgentTreeLive.liveFreshness))
+        suite.expect(stale?.live == false && stale?.nodes.contains(where: \.running) == false,
+                     "a snapshot too old to vouch for work shows its tree as finished")
+        suite.expect(AgentTreeLive.current(working, now: generated.addingTimeInterval(-7200)) != nil,
+                     "a clock a little behind the file still shows the card")
     }
 
     private static func truncation(_ suite: TestSuite) {

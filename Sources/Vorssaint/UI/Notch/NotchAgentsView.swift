@@ -575,8 +575,10 @@ private struct NotchAgentTreeCard: View {
                         row(node, depth: depths[index], branch: branches[index])
                     }
                 }
-                if shown.hidden > 0 {
-                    Text(text.agentTreeMore(shown.hidden.formatted(.number.locale(locale))))
+                // Agent Tree lists a few dozen nodes of a bigger tree; the count covers them all.
+                let hidden = max(tree.nodeCount, tree.nodes.count) - shown.rows.count
+                if hidden > 0 {
+                    Text(text.agentTreeMore(hidden.formatted(.number.locale(locale))))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -615,7 +617,9 @@ private struct NotchAgentTreeCard: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if !model.isEmpty { NotchAgentChip(text: model, tint: tint(node.family)) }
+            if !model.isEmpty && !node.label.isEmpty {
+                NotchAgentChip(text: model, tint: tint(node.family)).fixedSize()
+            }
             Text(AgentFormat.tokens(node.tokens, locale: locale))
                 .font(.system(size: 10, weight: .medium))
                 .monospacedDigit()

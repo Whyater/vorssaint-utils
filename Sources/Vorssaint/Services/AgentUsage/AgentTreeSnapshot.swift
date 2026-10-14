@@ -59,7 +59,7 @@ struct AgentTreeSnapshot: Decodable, Equatable {
                       cost: AgentTreeLive.money((try? values.decodeIfPresent(Double.self, forKey: .cost))))
         }
 
-        var failed: Bool { ["error", "failed", "failure", "aborted", "cancelled", "canceled", "interrupted"].contains(status) }
+        var failed: Bool { ["error", "failed", "failure", "aborted", "cancelled", "canceled", "interrupted", "killed"].contains(status) }
     }
 
     struct Tree: Decodable, Equatable {
@@ -109,6 +109,14 @@ struct AgentTreeSnapshot: Decodable, Equatable {
                       nodes: Array(nodes))
         }
 
+        /// The same tree with nothing working, for a snapshot too old to vouch for that.
+        var settled: Tree {
+            Tree(threadID: threadID, title: title, live: false, nodeCount: nodeCount, maxDepth: maxDepth,
+                 tokens: tokens, cost: cost,
+                 nodes: nodes.map { Node(id: $0.id, parentID: $0.parentID, depth: $0.depth, label: $0.label, model: $0.model,
+                                         family: $0.family, status: $0.status, running: false, tokens: $0.tokens, cost: $0.cost) })
+        }
+
         /// Whether every node has a known price, so the costs are not a minimum.
         var fullyPriced: Bool { cost != nil && nodes.allSatisfy { $0.cost != nil } }
     }
@@ -151,6 +159,8 @@ enum AgentTreeLive {
     /// Agent Tree writes after every scan; a snapshot older than a day
     /// belongs to an app no longer running.
     static let freshness: TimeInterval = 86_400
+    /// Agent Tree rewrites the file at least every ten minutes while it runs.
+    static let liveFreshness: TimeInterval = 900
     static let maximumSize = 1 << 20
     static let maximumNodes = 200
     static let deepest = 32
@@ -174,10 +184,12 @@ enum AgentTreeLive {
     }
 
     /// The tree worth a card: from a recent snapshot, with at least one node.
+    /// Past `liveFreshness` nothing in it is shown as working any more, so a
+    /// tree left behind when Agent Tree quits reads as the last thread.
     static func current(_ snapshot: AgentTreeSnapshot?, now: Date) -> AgentTreeSnapshot.Tree? {
-        guard let snapshot, abs(now.timeIntervalSince(snapshot.generatedAt)) < freshness,
-              let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
-        return tree
+        let age = snapshot.map { abs(now.timeIntervalSince($0.generatedAt)) } ?? .infinity
+        guard let snapshot, age < freshness, let tree = snapshot.tree, !tree.nodes.isEmpty else { return nil }
+        return age < liveFreshness ? tree : tree.settled
     }
 
     /// Up to `limit` nodes in their own order, and how many were left out.
