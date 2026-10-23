@@ -854,10 +854,10 @@ final class NotchService: ObservableObject {
         let accounts = NotchAgentSupport.showsCodexAccounts() ? CodexProfileLimitsService.shared.states.map(\.id) : []
         guard usage.loaded || !accounts.isEmpty else { return nil }
         let providers = enabled.filter { usage.seen.contains($0) || ($0 == .codex && !accounts.isEmpty) }
-        guard !providers.isEmpty else { return 0 }
+        let tree = AgentUsageService.shared.agentTree
         return NotchAgentSupport.contentHeight(NotchAgentSupport.rows(
-            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers, codexAccounts: accounts),
-            width: width))
+            NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers, codexAccounts: accounts,
+                                    agentTree: tree != nil), width: width), tree: tree)
     }
     var expandedGeometry: NotchGeometry {
         var result = geometry
@@ -3979,6 +3979,16 @@ final class NotchService: ObservableObject {
                     guard let self, self.selected == .agents else { return }
                     self.objectWillChange.send()
                     self.refreshPresentation()
+                }.store(in: &subscriptions)
+            // Agent Tree's card comes and goes with its snapshot, and is as tall as its rows.
+            AgentUsageService.shared.$agentTree
+                .map { $0.map { NotchAgentSupport.treeHeight($0) } }
+                .removeDuplicates()
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.refreshPresentation()
                 }.store(in: &subscriptions)
         }
         if modules.contains(.calendar) {

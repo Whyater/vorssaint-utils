@@ -7,7 +7,7 @@ import Foundation
 /// The cards the AI page can show, in the order a person arranges them. Raw
 /// values are stored in the saved order, so cases are never renamed.
 enum NotchAgentCard: String, CaseIterable, Identifiable {
-    case limits, spend, live, trend, models, projects, activity, resets
+    case limits, spend, live, agentTree, trend, models, projects, activity, resets
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ enum NotchAgentCard: String, CaseIterable, Identifiable {
         case .limits: return "gauge.with.dots.needle.33percent"
         case .spend: return "dollarsign.circle"
         case .live: return "waveform.path.ecg"
+        case .agentTree: return "arrow.triangle.branch"
         case .trend: return "chart.bar.xaxis"
         case .models: return "cpu"
         case .projects: return "folder"
@@ -24,8 +25,8 @@ enum NotchAgentCard: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Charts need the island's width; everything else pairs up.
-    var fullWidth: Bool { self == .trend || self == .activity }
+    /// Charts and the agent tree need the island's width; everything else pairs up.
+    var fullWidth: Bool { self == .trend || self == .activity || self == .agentTree }
 
     /// Cards that cover the period chosen in the island's top row.
     var followsPeriod: Bool { self == .spend || self == .trend || self == .models || self == .projects }
@@ -258,14 +259,24 @@ enum NotchAgentSupport {
     static let accountCardHeight: CGFloat = 116
     /// An account card's reading, checked every five minutes, has missed two.
     static let accountStaleness: TimeInterval = 10 * 60
+    /// A tree card shows up to five agents and a line for the rest, and is
+    /// only as tall as what it shows.
+    static let treeRows = 5
+    static let treeRowHeight: CGFloat = 16
+    static let treeLineHeight: CGFloat = 13
+    static let treeSpacing: CGFloat = 6
+    /// The card's padding above and below, and its header.
+    private static let treeChrome: CGFloat = 10 * 2 + 17
     /// Below this width every card takes a row of its own.
     static let pairWidth: CGFloat = 390
 
     /// Codex homes the person added take the place of Codex's one limits
     /// card, the usual home among them when they add it.
     static func tiles(cards: [NotchAgentCard], providers: [AgentProvider],
-                      codexAccounts: [String] = []) -> [NotchAgentTile] {
-        cards.flatMap { card -> [NotchAgentTile] in
+                      codexAccounts: [String] = [], agentTree: Bool = false) -> [NotchAgentTile] {
+        // With no agent logs on this Mac, Agent Tree's card is the only one with anything to show.
+        let cards = providers.isEmpty ? cards.filter { $0 == .agentTree } : cards
+        return cards.flatMap { card -> [NotchAgentTile] in
             switch card {
             case .limits: return providers.filter(\.reportsLimits).flatMap { provider -> [NotchAgentTile] in
                 guard provider == .codex, !codexAccounts.isEmpty else { return [NotchAgentTile(card: .limits, provider: provider)] }
@@ -275,6 +286,8 @@ enum NotchAgentSupport {
             // the card names once others have cards.
             case .resets: return providers.contains(.codex)
                 ? [NotchAgentTile(card: .resets, provider: .codex, namesDefaultAccount: !codexAccounts.isEmpty)] : []
+            // The tree comes from Agent Tree, and only while it keeps a recent one.
+            case .agentTree: return agentTree ? [NotchAgentTile(card: .agentTree, provider: nil)] : []
             default: return [NotchAgentTile(card: card, provider: nil)]
             }
         }
@@ -302,7 +315,22 @@ enum NotchAgentSupport {
         return rows
     }
 
-    static func height(of row: [NotchAgentTile]) -> CGFloat {
+    /// The rows a tree card shows, and how many agents it counts but leaves out.
+    static func treeShown(_ tree: AgentTreeSnapshot.Tree) -> (rows: [AgentTreeSnapshot.Node], hidden: Int) {
+        let shown = AgentTreeLive.rows(tree.nodes, limit: treeRows)
+        // Agent Tree lists a few dozen nodes of a bigger tree; the count covers them all.
+        return (shown.rows, max(tree.nodeCount, tree.nodes.count) - shown.rows.count)
+    }
+
+    static func treeHeight(_ tree: AgentTreeSnapshot.Tree?) -> CGFloat {
+        guard let tree else { return treeChrome }
+        let shown = treeShown(tree)
+        let rows = CGFloat(shown.rows.count) * treeRowHeight
+        return treeChrome + (rows > 0 ? treeSpacing + rows : 0) + (shown.hidden > 0 ? treeSpacing + treeLineHeight : 0)
+    }
+
+    static func height(of row: [NotchAgentTile], tree: AgentTreeSnapshot.Tree? = nil) -> CGFloat {
+        if row.contains(where: { $0.card == .agentTree }) { return treeHeight(tree) }
         if row.contains(where: \.card.fullWidth) { return chartHeight }
         return row.contains { $0.accountID != nil || $0.namesDefaultAccount } ? accountCardHeight : cardHeight
     }
@@ -325,9 +353,9 @@ enum NotchAgentSupport {
         return provider == .claude && age >= AgentClaudeAppUsage.freshness
     }
 
-    static func contentHeight(_ rows: [[NotchAgentTile]]) -> CGFloat {
+    static func contentHeight(_ rows: [[NotchAgentTile]], tree: AgentTreeSnapshot.Tree? = nil) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
-        return rows.map(height).reduce(0, +) + spacing * CGFloat(rows.count - 1)
+        return rows.map { height(of: $0, tree: tree) }.reduce(0, +) + spacing * CGFloat(rows.count - 1)
     }
 }
 
