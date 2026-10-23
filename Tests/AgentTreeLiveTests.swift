@@ -13,6 +13,7 @@ enum AgentTreeLiveTests {
         branches(suite)
         cards(suite)
         application(suite)
+        backgroundLaunch(suite)
         boundedRead(suite)
     }
 
@@ -213,6 +214,21 @@ enum AgentTreeLiveTests {
         suite.expect(AgentTreeLive.application(locate: { _ in app }, identify: { _ in "com.example.other" }) == nil
                         && AgentTreeLive.application(locate: { _ in app }, identify: { _ in nil }) == nil,
                      "a bundle that no longer answers to Agent Tree's identifier is not opened")
+    }
+
+    private static func backgroundLaunch(_ suite: TestSuite) {
+        let app = URL(fileURLWithPath: "/Applications/Agent Tree.app")
+        var opened: [URL] = []
+        suite.expect(AgentTreeLive.launchInBackground(isRunning: { false }, application: { app }, open: { opened.append($0) })
+                        && opened == [app],
+                     "an installed Agent Tree that is not running is opened when the card starts")
+        opened = []
+        suite.expect(!AgentTreeLive.launchInBackground(isRunning: { true }, application: { app }, open: { opened.append($0) })
+                        && opened.isEmpty,
+                     "a running Agent Tree is left alone, as opening it again shows its window")
+        suite.expect(!AgentTreeLive.launchInBackground(isRunning: { false }, application: { nil }, open: { opened.append($0) })
+                        && opened.isEmpty,
+                     "without Agent Tree on this Mac nothing is opened")
     }
 
     private static func boundedRead(_ suite: TestSuite) {

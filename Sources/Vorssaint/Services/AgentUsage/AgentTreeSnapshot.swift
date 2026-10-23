@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import Foundation
+import AppKit
 
 /// Agent Tree, a separate app, follows which agents spawned which in a thread
 /// and keeps a small summary of it in `~/.agent-tree/live.json` after every
@@ -184,6 +184,25 @@ enum AgentTreeLive {
                              identify: (URL) -> String? = { Bundle(url: $0)?.bundleIdentifier }) -> URL? {
         guard let url = locate(bundleIdentifier), identify(url) == bundleIdentifier else { return nil }
         return url
+    }
+
+    /// Opens Agent Tree without bringing it forward, as its card has nothing
+    /// to show while it is closed. A running Agent Tree is left alone: opening
+    /// it again shows its window. True when it was opened.
+    @discardableResult
+    static func launchInBackground(
+        isRunning: () -> Bool = { !NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty },
+        application: () -> URL? = { application() },
+        open: (URL) -> Void = { url in
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        }
+    ) -> Bool {
+        guard !isRunning(), let url = application() else { return false }
+        open(url)
+        return true
     }
 
     /// The file's snapshot; nil for a missing, oversized or unknown file, or

@@ -93,6 +93,8 @@ final class AgentUsageService: ObservableObject {
     private var claudeAppSamples: [AgentClaudeAppUsage.Sample] = []
     private var agentTreeModified: Date?
     private var agentTreeFile: AgentTreeSnapshot?
+    /// Agent Tree is opened once per launch, so quitting it later keeps it closed.
+    private var openedAgentTree = false
     private var shippedPrices: AgentPriceList?
     private var previousLimits: [AgentProvider: AgentLimits] = [:]
     /// Warned windows, each waiting for its renewal.
@@ -126,6 +128,10 @@ final class AgentUsageService: ObservableObject {
         syncPrices()
         // The tree card may have been shown or hidden.
         refreshAgentTree()
+        if !openedAgentTree, NotchAgentSupport.cards().contains(.agentTree) {
+            openedAgentTree = true
+            AgentTreeLive.launchInBackground()
+        }
     }
 
     /// Stops reading while the island is away, as with the display asleep or
